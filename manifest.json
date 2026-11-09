@@ -1,0 +1,30 @@
+{
+  "name": "AnimeNexus România",
+  "version": "1.1.0",
+  "description": "Surse anime subtitrate în română de pe anime-nexus.io (fost AnimeKage). Rezolvă Voe, VidHide, VTube, VidMoly, MP4upload, DoodStream și LuluStream.",
+  "author": "AnimeNexus Nuvio Provider",
+  "scrapers": [
+    {
+      "id": "anime-nexus",
+      "name": "AnimeNexus",
+      "description": "AnimeNexus.io — episoade și filme cu subtitrări în română. Necesită cont.",
+      "version": "1.1.0",
+      "author": "AnimeNexus Nuvio Provider",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/anime-nexus.js",
+      "enabled": true,
+      "hasSettings": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://anime-nexus.io/media/logo/logo_an.png",
+      "contentLanguage": [
+        "ro"
+      ]
+    }
+  ]
+}
