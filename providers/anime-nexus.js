@@ -12,7 +12,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.4.5';
+var PROVIDER_VERSION = '1.4.6';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -608,18 +608,7 @@ async function getCatalog() {
     var options = [];
     for (var attempt = 0; attempt < 2; attempt++) {
         var result = await pageFetch('/nexus/series/search');
-        var html = result.text;
-        options = [];
-        var regex = /<option value="([^"]+)">([\s\S]*?)<\/option>/gi;
-        var match;
-
-        while ((match = regex.exec(html)) !== null) {
-            var path = decodeEntities(match[1]).trim();
-            var label = stripTags(match[2]);
-            if (!path || !label) continue;
-            options.push({ path: path, label: label });
-        }
-
+        options = parseCatalogOptions(result.text);
         if (options.length > 0) break;
         log('catalog gol, reîncerc');
         await sleep(700);
@@ -628,6 +617,24 @@ async function getCatalog() {
     catalogCache = options;
     catalogCount = options.length;
     log('catalog: ' + options.length + ' intrări');
+    return options;
+}
+
+function parseCatalogOptions(html) {
+    var parts = String(html || '').split('<option value="');
+    var options = [];
+    for (var i = 1; i < parts.length; i++) {
+        var chunk = parts[i];
+        var quote = chunk.indexOf('"');
+        if (quote < 0) continue;
+        var gt = chunk.indexOf('>', quote);
+        if (gt < 0) continue;
+        var end = chunk.indexOf('</option>', gt);
+        if (end < 0) continue;
+        var path = decodeEntities(chunk.slice(0, quote)).trim();
+        var label = stripTags(chunk.slice(gt + 1, end));
+        if (path && label) options.push({ path: path, label: label });
+    }
     return options;
 }
 
@@ -733,8 +740,8 @@ function scoreOption(option, meta) {
     return score;
 }
 
-async function findCatalogMatches(meta) {
-    var options = await getCatalog();
+async function findCatalogMatches(meta, catalogOptions) {
+    var options = catalogOptions || await getCatalog();
     var scored = [];
 
     for (var i = 0; i < options.length; i++) {
@@ -1430,7 +1437,7 @@ function diagnosticFallback(tmdbId, mediaType, season, episode, entry, matchCoun
 
     return [{
         name: 'AnimeNexus',
-        title: 'DIAG 1.4.5 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
+        title: 'DIAG 1.4.6 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
             episode + ' c=' + catalogCount + ' m=' + matchCount + ' | ' + label,
         url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
         quality: 'Auto',
@@ -1523,6 +1530,12 @@ async function getStreams(tmdbId, mediaType, season, episode) {
             }
         }
 
+        // Catalogul și TMDB pot merge în paralel; pe TV economisește ~1s.
+        var catalogPromise = getCatalog().catch(function (error) {
+            log('catalog: ' + error.message);
+            return [];
+        });
+
         var meta = await getMeta(tmdbId, mediaType, season);
         if (!meta.names.length) throw new Error('TMDB: titlu gol');
 
@@ -1553,7 +1566,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
             }
         }
 
-        var matches = await findCatalogMatches(meta);
+        var matches = await findCatalogMatches(meta, await catalogPromise);
         if (!matches.length) {
             log('nu am găsit titlul în catalog: ' + meta.names.join(' | '));
             return diagnosticFallback(tmdbId, mediaType, season, episode, 'catalog gol', 0);
