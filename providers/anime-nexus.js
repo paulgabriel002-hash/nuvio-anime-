@@ -12,7 +12,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.4.4';
+var PROVIDER_VERSION = '1.4.5';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -667,6 +667,9 @@ function scoreOption(option, meta) {
 
     var label = option.label.replace(/\s*\((anime|ova-movie|live-action|manga)\)\s*$/i, '');
     var names = label.split(' / ');
+    // Include și titlul complet: „Kimetsu no Yaiba / Demon Slayer” trebuie
+    // să bată un arc derivat când meta e chiar serialul de bază.
+    names.push(label);
     var best = 0;
     var baseBest = 0;
     for (var i = 0; i < names.length; i++) {
@@ -686,7 +689,9 @@ function scoreOption(option, meta) {
 
     if (meta.isTv) {
         if (isAnimePath) score += 12;
-        if (isMoviePath) score += 4;
+        // Pentru seriale, filmul/OVA nu trebuie să bată arcul TV.
+        if (isMoviePath) score -= 80;
+        if (/\b(movie|film)\b/i.test(label)) score -= 80;
     } else {
         if (isMoviePath) score += 30;
         if (isAnimePath) score += 4;
@@ -696,14 +701,22 @@ function scoreOption(option, meta) {
     var seasonNumber = extractSeasonNumber(label);
     var labelNormalized = normalizeTitle(label);
     var seasonNameNormalized = meta.seasonName ? normalizeTitle(meta.seasonName) : '';
+    var seasonNameCore = seasonNameNormalized
+        .replace(/\b(arc|season|part|chapter|hen)\b/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     var hasSeasonName = seasonNameNormalized.length >= 4 &&
         labelNormalized.indexOf(seasonNameNormalized) >= 0;
+    var hasSeasonCore = seasonNameCore.length >= 4 &&
+        labelNormalized.indexOf(seasonNameCore) >= 0;
+    option._seasonCoreMatch = hasSeasonCore;
 
     if (meta.season != null && meta.season > 1) {
         // Trebuie să fie același serial, nu orice „Season 2” din catalog.
-        if (baseBest < 0.5) return -1;
+        if (baseBest < 0.5 && !hasSeasonCore) return -1;
 
         if (seasonNumber === meta.season) score += 55;
+        else if (hasSeasonCore) score += 50;
         else if (hasSeasonName) score += 45;
         else if (seasonNumber == null) score -= 35;
         else score -= 25;
@@ -726,7 +739,7 @@ async function findCatalogMatches(meta) {
 
     for (var i = 0; i < options.length; i++) {
         var score = scoreOption(options[i], meta);
-        if (score > 45 && (options[i]._bestTitleScore || 0) >= 0.45) {
+        if (score > 45 && ((options[i]._bestTitleScore || 0) >= 0.45 || options[i]._seasonCoreMatch)) {
             scored.push({ option: options[i], score: score });
         }
     }
@@ -1417,7 +1430,7 @@ function diagnosticFallback(tmdbId, mediaType, season, episode, entry, matchCoun
 
     return [{
         name: 'AnimeNexus',
-        title: 'DIAG 1.4.4 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
+        title: 'DIAG 1.4.5 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
             episode + ' c=' + catalogCount + ' m=' + matchCount + ' | ' + label,
         url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
         quality: 'Auto',

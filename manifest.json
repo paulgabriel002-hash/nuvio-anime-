@@ -1,14 +1,14 @@
 {
   "name": "AnimeNexus România",
-  "version": "1.4.4",
-  "description": "Surse anime subtitrate în română de pe anime-nexus.io (fost AnimeKage). Compatibil NuvioTV, ordine corectă Bleach TYBW, normalizare Naruto Shippuden.",
+  "version": "1.4.5",
+  "description": "Surse anime subtitrate în română de pe anime-nexus.io (fost AnimeKage). Potrivire pe arcul sezonului (Demon Slayer etc.), Bleach TYBW corect, compatibil NuvioTV.",
   "author": "AnimeNexus Nuvio Provider",
   "scrapers": [
     {
       "id": "anime-nexus",
       "name": "AnimeNexus",
       "description": "AnimeNexus.io — episoade și filme cu subtitrări în română. Necesită cont.",
-      "version": "1.4.4",
+      "version": "1.4.5",
       "author": "AnimeNexus Nuvio Provider",
       "supportedTypes": [
         "movie",
