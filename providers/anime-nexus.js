@@ -12,7 +12,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.4.3';
+var PROVIDER_VERSION = '1.4.4';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -283,7 +283,8 @@ function foldText(value) {
     var map = {
         'ă': 'a', 'â': 'a', 'î': 'i', 'ș': 's', 'ş': 's', 'ț': 't', 'ţ': 't',
         'á': 'a', 'à': 'a', 'ä': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'í': 'i',
-        'ó': 'o', 'ô': 'o', 'ö': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n', 'ç': 'c'
+        'ó': 'o', 'ô': 'o', 'ö': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n', 'ç': 'c',
+        'ū': 'u', 'ō': 'o', 'ā': 'a', 'ē': 'e', 'ī': 'i', 'û': 'u', 'ŷ': 'y'
     };
     var out = '';
     for (var i = 0; i < text.length; i++) {
@@ -296,6 +297,7 @@ function foldText(value) {
 function normalizeTitle(value) {
     return foldText(value)
         .replace(/&/g, ' and ')
+        .replace(/uu/g, 'u')
         .replace(/[^a-z0-9]+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
@@ -309,7 +311,12 @@ function titleSimilarity(a, b) {
 
     var shorter = left.length <= right.length ? left : right;
     var longer = left.length <= right.length ? right : left;
-    if (shorter.length >= 6 && longer.indexOf(shorter) >= 0) return 0.85;
+    if (shorter.length >= 6 && longer.indexOf(shorter) >= 0) {
+        // „Naruto” nu trebuie să bată „Naruto Shippuden”, dar
+        // „The Apothecary Diaries” vs „... Season 2” rămâne potrivire bună.
+        var ratio = shorter.length / longer.length;
+        return ratio >= 0.7 ? 0.85 : ratio;
+    }
 
     var leftTokens = left.split(' ');
     var rightTokens = right.split(' ');
@@ -644,7 +651,7 @@ function extractSeasonNumber(label) {
 }
 
 function stripSeasonMarkers(name) {
-    var text = String(name || '').split(':')[0];
+    var text = String(name || '');
     text = text.replace(/\b(?:season|part)\s*\d+\b/gi, ' ');
     text = text.replace(/\b\d+(?:st|nd|rd|th)\s+season\b/gi, ' ');
     text = text.replace(/\b(?:ii|iii|iv|v|vi|vii|viii|ix|x)\b\s*$/i, ' ');
@@ -1410,7 +1417,7 @@ function diagnosticFallback(tmdbId, mediaType, season, episode, entry, matchCoun
 
     return [{
         name: 'AnimeNexus',
-        title: 'DIAG 1.4.3 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
+        title: 'DIAG 1.4.4 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
             episode + ' c=' + catalogCount + ' m=' + matchCount + ' | ' + label,
         url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
         quality: 'Auto',
@@ -1447,9 +1454,9 @@ function specialEpisodePath(contentId, meta, season, episode) {
     var number = Number(episode);
     var ranges = [
         { from: 1, to: 13, path: '/nexus/anime/bleach-sennen-kessen-hen' },
-        { from: 14, to: 23, path: '/nexus/anime/bleach-sennen-kessen-hen-kashin-tan' },
-        { from: 24, to: 36, path: '/nexus/anime/bleach-sennen-kessen-hen-ketsubetsu-tan' },
-        { from: 37, to: 50, path: '/nexus/anime/bleach-sennen-kessen-hen-soukoku-tan' }
+        { from: 14, to: 26, path: '/nexus/anime/bleach-sennen-kessen-hen-ketsubetsu-tan' },
+        { from: 27, to: 40, path: '/nexus/anime/bleach-sennen-kessen-hen-soukoku-tan' },
+        { from: 41, to: 50, path: '/nexus/anime/bleach-sennen-kessen-hen-kashin-tan' }
     ];
 
     for (var i = 0; i < ranges.length; i++) {
