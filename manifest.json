@@ -1,14 +1,14 @@
 {
   "name": "AnimeNexus România",
-  "version": "1.4.1",
-  "description": "Surse anime subtitrate în română de pe anime-nexus.io (fost AnimeKage). ID-uri TMDB/IMDb/AniList/MAL/Kitsu, numerotare absolută pe sezoane, diagnostic.",
+  "version": "1.4.2",
+  "description": "Surse anime subtitrate în română de pe anime-nexus.io (fost AnimeKage). ID-uri TMDB/IMDb/AniList/MAL/Kitsu, hartă directă Bleach TYBW, diagnostic.",
   "author": "AnimeNexus Nuvio Provider",
   "scrapers": [
     {
       "id": "anime-nexus",
       "name": "AnimeNexus",
       "description": "AnimeNexus.io — episoade și filme cu subtitrări în română. Necesită cont.",
-      "version": "1.4.1",
+      "version": "1.4.2",
       "author": "AnimeNexus Nuvio Provider",
       "supportedTypes": [
         "movie",

@@ -12,7 +12,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.4.1';
+var PROVIDER_VERSION = '1.4.2';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -22,6 +22,7 @@ var DEFAULT_COOKIE = 'usri=493075; usrs=4930756af23f9cdcca47.75092106';
 var runtimeCookie = '';
 var loginAttempted = false;
 var catalogCache = null;
+var catalogCount = 0;
 var episodeCountCache = {};
 var runDeadline = 0;
 var debug = false;
@@ -632,20 +633,28 @@ async function getMeta(contentId, mediaType, season) {
 async function getCatalog() {
     if (catalogCache) return catalogCache;
 
-    var result = await pageFetch('/nexus/series/search');
-    var html = result.text;
     var options = [];
-    var regex = /<option value="([^"]+)">([\s\S]*?)<\/option>/gi;
-    var match;
+    for (var attempt = 0; attempt < 2; attempt++) {
+        var result = await pageFetch('/nexus/series/search');
+        var html = result.text;
+        options = [];
+        var regex = /<option value="([^"]+)">([\s\S]*?)<\/option>/gi;
+        var match;
 
-    while ((match = regex.exec(html)) !== null) {
-        var path = decodeEntities(match[1]).trim();
-        var label = stripTags(match[2]);
-        if (!path || !label) continue;
-        options.push({ path: path, label: label });
+        while ((match = regex.exec(html)) !== null) {
+            var path = decodeEntities(match[1]).trim();
+            var label = stripTags(match[2]);
+            if (!path || !label) continue;
+            options.push({ path: path, label: label });
+        }
+
+        if (options.length > 0) break;
+        log('catalog gol, reîncerc');
+        await sleep(700);
     }
 
     catalogCache = options;
+    catalogCount = options.length;
     log('catalog: ' + options.length + ' intrări');
     return options;
 }
@@ -1355,7 +1364,7 @@ async function collectFromPage(html, pageUrl) {
                 else if (resolverName === 'mp4upload') call = resolveMp4Upload(embedUrl);
                 else call = resolvePacked(embedUrl, label);
 
-                return withTimeout(call, 20000, label).catch(function (error) {
+                return withTimeout(call, 30000, label).catch(function (error) {
                     log(label + ': ' + error.message);
                     return null;
                 });
@@ -1429,18 +1438,48 @@ async function countEpisodes(option) {
 function diagnosticFallback(tmdbId, mediaType, season, episode, entry, matchCount) {
     if (!setting('diagnostic', true)) return [];
 
-    var label = String(entry || 'none').slice(0, 60);
+    var label = String(entry || 'none').slice(0, 40);
     log('diagnostic: id=' + tmdbId + ' type=' + mediaType + ' S=' + season +
-        ' E=' + episode + ' entry=' + label + ' matches=' + matchCount);
+        ' E=' + episode + ' catalog=' + catalogCount + ' matches=' + matchCount +
+        ' entry=' + label);
 
     return [{
         name: 'AnimeNexus',
-        title: 'DIAG v1.4.1 id=' + tmdbId + ' t=' + mediaType + ' S=' + season +
-            ' E=' + episode + ' | ' + label,
+        title: 'DIAG 1.4.2 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
+            episode + ' c=' + catalogCount + ' m=' + matchCount + ' | ' + label,
         url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
         quality: 'Auto',
         headers: { 'User-Agent': userAgent() }
     }];
+}
+
+function specialEpisodePath(contentId, meta, season, episode) {
+    if (season == null || Number(season) !== 2) return null;
+
+    var id = String(contentId || '').toLowerCase();
+    var names = (meta && meta.names) ? meta.names : [];
+    var isBleach = id === '30984' || id === 'tt0409591' ||
+        names.some(function (name) { return normalizeTitle(name) === 'bleach'; });
+
+    if (!isBleach) return null;
+
+    var number = Number(episode);
+    var ranges = [
+        { from: 1, to: 13, path: '/nexus/anime/bleach-sennen-kessen-hen' },
+        { from: 14, to: 23, path: '/nexus/anime/bleach-sennen-kessen-hen-kashin-tan' },
+        { from: 24, to: 36, path: '/nexus/anime/bleach-sennen-kessen-hen-ketsubetsu-tan' },
+        { from: 37, to: 50, path: '/nexus/anime/bleach-sennen-kessen-hen-soukoku-tan' }
+    ];
+
+    for (var i = 0; i < ranges.length; i++) {
+        if (number >= ranges[i].from && number <= ranges[i].to) {
+            return {
+                path: ranges[i].path,
+                episode: number - ranges[i].from + 1
+            };
+        }
+    }
+    return null;
 }
 
 async function getStreams(tmdbId, mediaType, season, episode) {
@@ -1450,7 +1489,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
     loginAttempted = false;
     catalogCache = null;
     episodeCountCache = {};
-    runDeadline = Date.now() + 45000;
+    runDeadline = Date.now() + 115000;
 
     log('v' + PROVIDER_VERSION + ' input id=' + tmdbId + ' type=' + mediaType +
         ' season=' + season + ' episode=' + episode);
@@ -1459,11 +1498,59 @@ async function getStreams(tmdbId, mediaType, season, episode) {
     var matchCount = 0;
 
     try {
+        // Bleach TYBW: hartă directă, fără TMDB/catalog, ca să meargă și pe TV
+        // chiar dacă API-ul TMDB sau catalogul AnimeNexus nu răspund.
+        var earlySpecial = specialEpisodePath(tmdbId, null, season, episode);
+        if (earlySpecial) {
+            log('hartă directă: ' + earlySpecial.path + ' ep. ' + earlySpecial.episode);
+            try {
+                var earlyPage = await findEpisodePage(
+                    { path: earlySpecial.path, label: 'Bleach TYBW' },
+                    { isTv: true, season: season, names: [] },
+                    earlySpecial.episode
+                );
+                if (earlyPage) {
+                    var earlyStreams = await collectFromPage(earlyPage.html, earlyPage.url);
+                    if (earlyStreams.length) {
+                        log('gata (hartă directă): ' + earlyStreams.length + ' surse');
+                        return earlyStreams.slice(0, 40);
+                    }
+                }
+            } catch (earlyError) {
+                if (isAuthError(earlyError)) throw earlyError;
+                log('hartă directă: ' + earlyError.message);
+            }
+        }
+
         var meta = await getMeta(tmdbId, mediaType, season);
         if (!meta.names.length) throw new Error('TMDB: titlu gol');
 
         log('meta: ' + meta.contentId + ' | ' + meta.names.slice(0, 3).join(' / ') +
             ' | isTv=' + meta.isTv + ' | season=' + meta.season);
+
+        var limit = parseInt(setting('maxSources', '40'), 10) || 40;
+        var special = specialEpisodePath(tmdbId, meta, season, episode);
+
+        if (special) {
+            log('hartă specială: ' + special.path + ' ep. ' + special.episode);
+            try {
+                var specialPage = await findEpisodePage(
+                    { path: special.path, label: 'Bleach TYBW' },
+                    meta,
+                    special.episode
+                );
+                if (specialPage) {
+                    var specialStreams = await collectFromPage(specialPage.html, specialPage.url);
+                    if (specialStreams.length) {
+                        log('gata (hartă): ' + specialStreams.length + ' surse');
+                        return specialStreams.slice(0, limit);
+                    }
+                }
+            } catch (specialError) {
+                if (isAuthError(specialError)) throw specialError;
+                log('hartă specială: ' + specialError.message);
+            }
+        }
 
         var matches = await findCatalogMatches(meta);
         if (!matches.length) {
@@ -1474,13 +1561,12 @@ async function getStreams(tmdbId, mediaType, season, episode) {
         log('catalog: ' + matches.length + ' potriviri');
 
         var wantedEpisode = (!meta.isTv || episode == null) ? 1 : Number(episode);
-        var limit = parseInt(setting('maxSources', '40'), 10) || 40;
 
         var episodeOffset = 0;
 
         for (var i = 0; i < matches.length; i++) {
             if (Date.now() > runDeadline) {
-                log('timp limită de 45s atins');
+                log('timp limită de 115s atins');
                 break;
             }
 
