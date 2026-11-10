@@ -1001,7 +1001,7 @@ async function resolveVoe(embedUrl) {
 
         if (debug) {
             log('voe hop ' + hop + ': ' + finalUrl + ' len=' + html.length +
-                ' title=' + pageTitle(html).slice(0, 60));
+                ' title=' + pageTitle(html).slice(0, 160));
         }
 
         var redirect = html.match(/window\.location(?:\.href)?\s*=\s*['"](https?:\/\/[^'"]+)['"]/i);
@@ -1453,6 +1453,15 @@ function diagnosticFallback(tmdbId, mediaType, season, episode, entry, matchCoun
     }];
 }
 
+function sortSpecialStreams(streams) {
+    return streams.sort(function (left, right) {
+        var leftVoe = /voe/i.test(left.provider || left.title) ? 1 : 0;
+        var rightVoe = /voe/i.test(right.provider || right.title) ? 1 : 0;
+        if (leftVoe !== rightVoe) return rightVoe - leftVoe;
+        return qualityRank(right.quality) - qualityRank(left.quality);
+    });
+}
+
 function specialEpisodePath(contentId, meta, season, episode) {
     if (season == null || Number(season) !== 2) return null;
 
@@ -1513,7 +1522,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
                     var earlyStreams = await collectFromPage(earlyPage.html, earlyPage.url);
                     if (earlyStreams.length) {
                         log('gata (hartă directă): ' + earlyStreams.length + ' surse');
-                        return earlyStreams.slice(0, 40);
+                        return sortSpecialStreams(earlyStreams).slice(0, 40);
                     }
                 }
             } catch (earlyError) {
@@ -1543,7 +1552,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
                     var specialStreams = await collectFromPage(specialPage.html, specialPage.url);
                     if (specialStreams.length) {
                         log('gata (hartă): ' + specialStreams.length + ' surse');
-                        return specialStreams.slice(0, limit);
+                        return sortSpecialStreams(specialStreams).slice(0, limit);
                     }
                 }
             } catch (specialError) {
