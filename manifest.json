@@ -1,14 +1,14 @@
 {
   "name": "AnimeNexus România",
-  "version": "1.4.9",
-  "description": "Surse anime subtitrate în română de pe anime-nexus.io (fost AnimeKage). Matching bidirecțional sezoane, catalog inclus, hostere lente izolate.",
+  "version": "1.5.0",
+  "description": "Surse anime subtitrate în română de pe anime-nexus.io (fost AnimeKage). Matching bidirecțional, catalog inclus, Real-Debrid opțional pentru Mega/Voe.",
   "author": "AnimeNexus Nuvio Provider",
   "scrapers": [
     {
       "id": "anime-nexus",
       "name": "AnimeNexus",
       "description": "AnimeNexus.io — episoade și filme cu subtitrări în română. Necesită cont.",
-      "version": "1.4.9",
+      "version": "1.5.0",
       "author": "AnimeNexus Nuvio Provider",
       "supportedTypes": [
         "movie",
