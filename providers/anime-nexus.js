@@ -12,7 +12,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.6';
+var PROVIDER_VERSION = '1.6.7';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1302,6 +1302,41 @@ function unpackPacker(html) {
     return payload;
 }
 
+async function resolveVidara(embedUrl) {
+    var page = await fetchText(embedUrl, {
+        headers: embedHeaders(getBase() + '/'),
+        redirect: 'follow'
+    }, 20000);
+    var origin = originOf(page.url || embedUrl);
+    var path = String(page.url || embedUrl).split('?')[0].replace(/\/+$/, '');
+    var filecode = path.split('/').pop();
+    if (!filecode) throw new Error('Vidara: filecode lipsă');
+
+    var data = await fetchJson(origin + '/api/stream', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Referer': origin + '/',
+            'Origin': origin
+        },
+        body: JSON.stringify({ filecode: filecode, device: 'web', codecs: [] })
+    }, 20000);
+
+    var source = data && (data.streaming_url || data.url || data.file);
+    if (!source || !/^https?:\/\//i.test(source)) throw new Error('Vidara: fără streaming_url');
+
+    var quality = parseQuality(data.title || source);
+    var masterQuality = await inspectMaster(source, origin + '/');
+    if (masterQuality.quality) quality = masterQuality.quality;
+    return {
+        url: source,
+        quality: quality,
+        referer: origin + '/',
+        label: 'Vidara'
+    };
+}
+
 async function resolvePacked(embedUrl, label) {
     var page = await fetchText(embedUrl, {
         headers: embedHeaders(getBase() + '/'),
@@ -1555,8 +1590,9 @@ function resolverFor(url) {
     if (/vide0\.net|playmogo|dood|ds2play|doodstream|dooood\.com/.test(host)) return 'dood';
     if (/mp4upload\.com/.test(host)) return 'mp4upload';
     if (/streamtape\.com/.test(host)) return 'streamtape';
+    if (/vidara\.to/.test(host)) return 'vidara';
     if (/mega\.nz|mega\.co\.nz/.test(host)) return 'mega';
-    if (/morencius\.com|vidhide|earnvids|filelions|vidmoly|vtbe\.to|vtube\./.test(host)) return 'packed';
+    if (/morencius\.com|vidhide|earnvids|filelions|vidmoly|vtbe\.to|vtube\.|filemoon|bysedikamoum|streamhg|jodwish|hexupload|lulustream|abyss|abstream|vidara\.to|uqload\.|hydrax\./.test(host)) return 'packed';
     return null;
 }
 
@@ -1572,7 +1608,9 @@ async function collectFromPage(html, pageUrl) {
     }
 
     if (debug) {
-        log('iframe-uri: ' + iframes.map(function (item) { return item.label; }).join(' | '));
+        log('iframe-uri: ' + iframes.map(function (item) {
+            return item.label + '=' + item.url;
+        }).join(' | '));
     }
 
     var tasks = [];
@@ -1585,8 +1623,8 @@ async function collectFromPage(html, pageUrl) {
         if (!resolver) continue;
         var host = hostOf(iframe.url);
         var isSlow = resolver === 'dood' || /vidhide|earnvids|vidhidepre|filelions/.test(host);
-        // Un singur host de fiecare tip la fast; la slow încercăm fiecare host.
-        var key = resolver + (isSlow ? '|' + host : '');
+        // Un singur host de fiecare tip la fast; la slow/packed încercăm fiecare host.
+        var key = resolver + ((isSlow || resolver === 'packed') ? '|' + host : '');
         if (seen[key]) continue;
         seen[key] = true;
 
@@ -1614,6 +1652,7 @@ async function collectFromPage(html, pageUrl) {
                 else if (resolverName === 'mp4upload') call = resolveMp4Upload(embedUrl);
                 else if (resolverName === 'streamtape') call = resolveStreamTape(embedUrl);
                 else if (resolverName === 'mega') call = resolveMega(embedUrl);
+                else if (resolverName === 'vidara') call = resolveVidara(embedUrl);
                 else call = resolvePacked(embedUrl, label);
 
                 var startedAt = Date.now();
@@ -1650,7 +1689,7 @@ async function collectFromPage(html, pageUrl) {
                 seenUrls[result.url] = true;
                 var quality = result.quality || 'Auto';
                 out.push({
-                    name: 'AnimeNexus',
+                    name: result.label + ' AnimeNexus',
                     title: quality + ' • ' + result.label + ' • Subtitrat RO',
                     url: result.url,
                     quality: quality,
@@ -1720,7 +1759,7 @@ function diagnosticFallback(tmdbId, mediaType, season, episode, entry, matchCoun
 
     return [{
         name: 'AnimeNexus',
-        title: 'DIAG 1.6.6 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
+        title: 'DIAG 1.6.7 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
             episode + ' c=' + catalogCount + ' m=' + matchCount + ' | ' + label,
         url: 'https://media.w3.org/2010/05/sintel/trailer.mp4',
         quality: 'Auto',
