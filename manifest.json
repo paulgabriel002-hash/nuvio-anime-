@@ -1,14 +1,14 @@
 {
   "name": "AnimeNexus România",
-  "version": "1.4.7",
-  "description": "Surse anime subtitrate în română de pe anime-nexus.io (fost AnimeKage). Offset sezoane absolute (Bungou), StreamTape, HLS prioritar, compatibil NuvioTV.",
+  "version": "1.4.8",
+  "description": "Surse anime subtitrate în română de pe anime-nexus.io (fost AnimeKage). Matching bidirecțional sezoane absolute/împărțite, catalog inclus, HLS prioritar.",
   "author": "AnimeNexus Nuvio Provider",
   "scrapers": [
     {
       "id": "anime-nexus",
       "name": "AnimeNexus",
       "description": "AnimeNexus.io — episoade și filme cu subtitrări în română. Necesită cont.",
-      "version": "1.4.7",
+      "version": "1.4.8",
       "author": "AnimeNexus Nuvio Provider",
       "supportedTypes": [
         "movie",
