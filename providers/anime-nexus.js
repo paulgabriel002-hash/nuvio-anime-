@@ -12,7 +12,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.4.8';
+var PROVIDER_VERSION = '1.4.9';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1511,11 +1511,12 @@ async function collectFromPage(html, pageUrl) {
         var iframe = iframes[i];
         var resolver = resolverFor(iframe.url);
         if (!resolver) continue;
-        // Dood e aproape mereu 403/Cloudflare și poate bloca 30s.
-        if (resolver === 'dood') continue;
-        // Un singur host de fiecare tip; duplicatele sunt mirror-uri moarte.
-        if (seen[resolver]) continue;
-        seen[resolver] = true;
+        var host = hostOf(iframe.url);
+        var isSlow = resolver === 'dood' || /vidhide|earnvids|vidhidepre|filelions/.test(host);
+        // Un singur host de fiecare tip la fast; la slow încercăm fiecare host.
+        var key = resolver + (isSlow ? '|' + host : '');
+        if (seen[key]) continue;
+        seen[key] = true;
 
         var task = (function (resolverName, embedUrl, label) {
             return function () {
@@ -1537,7 +1538,7 @@ async function collectFromPage(html, pageUrl) {
             };
         })(resolver, iframe.url, iframe.label);
 
-        if (/vidhide|earnvids|vidhidepre/.test(hostOf(iframe.url))) {
+        if (isSlow) {
             slowTasks.push(task);
         } else {
             tasks.push(task);
@@ -1627,7 +1628,7 @@ function diagnosticFallback(tmdbId, mediaType, season, episode, entry, matchCoun
 
     return [{
         name: 'AnimeNexus',
-        title: 'DIAG 1.4.8 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
+        title: 'DIAG 1.4.9 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
             episode + ' c=' + catalogCount + ' m=' + matchCount + ' | ' + label,
         url: 'https://media.w3.org/2010/05/sintel/trailer.mp4',
         quality: 'Auto',
