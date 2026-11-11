@@ -12,7 +12,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.3';
+var PROVIDER_VERSION = '1.6.4';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1701,7 +1701,7 @@ function diagnosticFallback(tmdbId, mediaType, season, episode, entry, matchCoun
 
     return [{
         name: 'AnimeNexus',
-        title: 'DIAG 1.6.3 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
+        title: 'DIAG 1.6.4 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
             episode + ' c=' + catalogCount + ' m=' + matchCount + ' | ' + label,
         url: 'https://media.w3.org/2010/05/sintel/trailer.mp4',
         quality: 'Auto',
@@ -1733,6 +1733,20 @@ function mappedEpisode(tmdbId, meta, mediaType, episode, targetEpisode) {
         return group.movie ? { path: group.movie, episode: 1 } : null;
     }
     if (!group.series || !group.series.length) return null;
+
+    // Sezon nou (anul curent) care nu există încă în hartă: nu forța un sezon vechi,
+    // ci lasă fallback-ul să ia catalogul live și să găsească intrarea nouă.
+    var currentYear = new Date().getFullYear();
+    if (meta.year && Number(meta.year) >= currentYear) {
+        var hasCurrentYear = false;
+        for (var y = 0; y < group.series.length; y++) {
+            if (Number(group.series[y].year) >= currentYear) {
+                hasCurrentYear = true;
+                break;
+            }
+        }
+        if (!hasCurrentYear) return null;
+    }
 
     var remaining = Number(targetEpisode) || 1;
     for (var i = 0; i < group.series.length; i++) {
