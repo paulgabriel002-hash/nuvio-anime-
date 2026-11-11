@@ -1,14 +1,14 @@
 {
   "name": "AnimeNexus România",
-  "version": "1.6.4",
-  "description": "Surse anime subtitrate în română de pe anime-nexus.io (fost AnimeKage). Hartă TMDB↔AnimeNexus pentru 2886 intrări, fallback live pentru sezoane noi, RD opțional.",
+  "version": "1.6.5",
+  "description": "Surse anime subtitrate în română de pe anime-nexus.io (fost AnimeKage). Hartă TMDB↔AnimeNexus pentru 2887 intrări, fallback live pentru sezoane noi, RD opțional.",
   "author": "AnimeNexus Nuvio Provider",
   "scrapers": [
     {
       "id": "anime-nexus",
       "name": "AnimeNexus",
       "description": "AnimeNexus.io — episoade și filme cu subtitrări în română. Necesită cont.",
-      "version": "1.6.4",
+      "version": "1.6.5",
       "author": "AnimeNexus Nuvio Provider",
       "supportedTypes": [
         "movie",
