@@ -12,7 +12,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.4.7';
+var PROVIDER_VERSION = '1.4.8';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -314,6 +314,17 @@ function titleSimilarity(a, b) {
 
     var shorter = left.length <= right.length ? left : right;
     var longer = left.length <= right.length ? right : left;
+
+    // „Highschool” vs „High School”, „Bungou” vs „Bungo” etc.
+    var leftCompact = left.replace(/ /g, '');
+    var rightCompact = right.replace(/ /g, '');
+    if (leftCompact === rightCompact) return 1;
+    var shorterCompact = leftCompact.length <= rightCompact.length ? leftCompact : rightCompact;
+    var longerCompact = leftCompact.length <= rightCompact.length ? rightCompact : leftCompact;
+    if (shorterCompact.length >= 6 && longerCompact.indexOf(shorterCompact) >= 0) {
+        return shorterCompact.length / longerCompact.length;
+    }
+
     if (shorter.length >= 6 && longer.indexOf(shorter) >= 0) {
         // „Naruto” nu trebuie să bată „Naruto Shippuden”, dar
         // „The Apothecary Diaries” vs „... Season 2” rămâne potrivire bună.
@@ -422,9 +433,21 @@ async function tmdbMeta(tmdbId, mediaType, season) {
         year = parseInt(String(show.release_date || '').slice(0, 4), 10) || null;
     }
 
+    var seasonCounts = {};
+    var seasonFirstEpisode = null;
+    if (isTv && show.seasons) {
+        for (var s = 0; s < show.seasons.length; s++) {
+            var sn = Number(show.seasons[s].season_number);
+            if (sn > 0) seasonCounts[sn] = Number(show.seasons[s].episode_count) || 0;
+        }
+    }
+
     if (seasonPromise) {
         var seasonData = await seasonPromise;
         if (seasonData) {
+            if (seasonData.episodes && seasonData.episodes.length) {
+                seasonFirstEpisode = Number(seasonData.episodes[0].episode_number) || null;
+            }
             seasonName = seasonData.name || '';
             if (seasonData.air_date) {
                 year = parseInt(String(seasonData.air_date).slice(0, 4), 10) || year;
@@ -444,6 +467,8 @@ async function tmdbMeta(tmdbId, mediaType, season) {
         year: year,
         season: season,
         seasonName: seasonName,
+        seasonCounts: seasonCounts,
+        seasonFirstEpisode: seasonFirstEpisode,
         names: uniqueStrings(names)
     };
 }
@@ -736,7 +761,7 @@ function scoreOption(option, meta) {
         }
     }
 
-    var score = best * 100;
+    var score = Math.max(best, baseBest) * 100;
     option._bestTitleScore = best;
     option._baseTitleScore = baseBest;
 
@@ -745,6 +770,9 @@ function scoreOption(option, meta) {
         // Pentru seriale, filmul/OVA nu trebuie să bată arcul TV.
         if (isMoviePath) score -= 80;
         if (/\b(movie|film)\b/i.test(label)) score -= 80;
+        if (/\b(ova|special|specials|recap)\b/i.test(label) || /\bepisode\s*0\b/i.test(label)) {
+            score -= 120;
+        }
     } else {
         if (isMoviePath) score += 30;
         if (isAnimePath) score += 4;
@@ -758,10 +786,15 @@ function scoreOption(option, meta) {
         .replace(/\b(arc|season|part|chapter|hen)\b/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+    var labelCompact = labelNormalized.replace(/ /g, '');
+    var seasonNameCompact = seasonNameNormalized.replace(/ /g, '');
+    var seasonCoreCompact = seasonNameCore.replace(/ /g, '');
     var hasSeasonName = seasonNameNormalized.length >= 4 &&
-        labelNormalized.indexOf(seasonNameNormalized) >= 0;
+        (labelNormalized.indexOf(seasonNameNormalized) >= 0 ||
+            (seasonNameCompact.length >= 4 && labelCompact.indexOf(seasonNameCompact) >= 0));
     var hasSeasonCore = seasonNameCore.length >= 4 &&
-        labelNormalized.indexOf(seasonNameCore) >= 0;
+        (labelNormalized.indexOf(seasonNameCore) >= 0 ||
+            (seasonCoreCompact.length >= 4 && labelCompact.indexOf(seasonCoreCompact) >= 0));
     option._seasonCoreMatch = hasSeasonCore;
 
     if (meta.season != null && meta.season > 1) {
@@ -833,7 +866,9 @@ async function findCatalogMatches(meta, catalogOptions) {
 
     for (var i = 0; i < pool.length; i++) {
         var score = scoreOption(pool[i], meta);
-        if (score > 45 && ((pool[i]._bestTitleScore || 0) >= 0.45 || pool[i]._seasonCoreMatch)) {
+        if (score > 45 && ((pool[i]._bestTitleScore || 0) >= 0.45 ||
+            (pool[i]._baseTitleScore || 0) >= 0.5 ||
+            pool[i]._seasonCoreMatch)) {
             scored.push({ option: pool[i], score: score });
         }
     }
@@ -1449,7 +1484,7 @@ function resolverFor(url) {
     if (/vide0\.net|playmogo|dood|ds2play|doodstream|dooood\.com/.test(host)) return 'dood';
     if (/mp4upload\.com/.test(host)) return 'mp4upload';
     if (/streamtape\.com/.test(host)) return 'streamtape';
-    if (/filemoon|bysedikamoum|byse|fmoon|morencius\.com|vidhide|earnvids|filelions|vidmoly|vtbe\.to|vtube\.|streamhls\.to/.test(host)) return 'packed';
+    if (/morencius\.com|vidhide|earnvids|filelions|vidmoly|vtbe\.to|vtube\./.test(host)) return 'packed';
     return null;
 }
 
@@ -1469,17 +1504,20 @@ async function collectFromPage(html, pageUrl) {
     }
 
     var tasks = [];
+    var slowTasks = [];
     var seen = {};
 
     for (var i = 0; i < iframes.length; i++) {
         var iframe = iframes[i];
         var resolver = resolverFor(iframe.url);
         if (!resolver) continue;
-        var key = resolver + '|' + iframe.url;
-        if (seen[key]) continue;
-        seen[key] = true;
+        // Dood e aproape mereu 403/Cloudflare și poate bloca 30s.
+        if (resolver === 'dood') continue;
+        // Un singur host de fiecare tip; duplicatele sunt mirror-uri moarte.
+        if (seen[resolver]) continue;
+        seen[resolver] = true;
 
-        tasks.push((function (resolverName, embedUrl, label) {
+        var task = (function (resolverName, embedUrl, label) {
             return function () {
                 var call;
                 if (resolverName === 'voe') call = resolveVoe(embedUrl);
@@ -1488,38 +1526,58 @@ async function collectFromPage(html, pageUrl) {
                 else if (resolverName === 'streamtape') call = resolveStreamTape(embedUrl);
                 else call = resolvePacked(embedUrl, label);
 
-                return withTimeout(call, 30000, label).catch(function (error) {
-                    log(label + ': ' + error.message);
+                var startedAt = Date.now();
+                return withTimeout(call, 30000, label).then(function (result) {
+                    if (debug) log(label + ': ok ' + (Date.now() - startedAt) + 'ms');
+                    return result;
+                }).catch(function (error) {
+                    log(label + ': ' + error.message + ' (' + (Date.now() - startedAt) + 'ms)');
                     return null;
                 });
             };
-        })(resolver, iframe.url, iframe.label));
+        })(resolver, iframe.url, iframe.label);
+
+        if (/vidhide|earnvids|vidhidepre/.test(hostOf(iframe.url))) {
+            slowTasks.push(task);
+        } else {
+            tasks.push(task);
+        }
     }
 
-    if (!tasks.length) {
+    if (!tasks.length && !slowTasks.length) {
         log('niciun host suportat dintre: ' + iframes.map(function (item) { return hostOf(item.url); }).join(', '));
         return [];
     }
 
+    function buildStreams(results) {
+        var out = [];
+        var seenUrls = {};
+        for (var r = 0; r < results.length; r++) {
+            var result = results[r];
+            if (!result || !result.url || seenUrls[result.url]) continue;
+            seenUrls[result.url] = true;
+            var quality = result.quality || 'Auto';
+            out.push({
+                name: 'AnimeNexus',
+                title: quality + ' • ' + result.label + ' • Subtitrat RO',
+                url: result.url,
+                quality: quality,
+                provider: 'AnimeNexus · ' + result.label,
+                language: 'ro',
+                headers: playbackHeaders(result.referer || getBase() + '/')
+            });
+        }
+        return out;
+    }
+
     var results = await Promise.all(tasks.map(function (task) { return task(); }));
-    var streams = [];
-    var seenUrls = {};
+    var streams = buildStreams(results);
 
-    for (var r = 0; r < results.length; r++) {
-        var result = results[r];
-        if (!result || !result.url || seenUrls[result.url]) continue;
-        seenUrls[result.url] = true;
-
-        var quality = result.quality || '480p';
-        streams.push({
-            name: 'AnimeNexus',
-            title: quality + ' • ' + result.label + ' • Subtitrat RO',
-            url: result.url,
-            quality: quality,
-            provider: 'AnimeNexus · ' + result.label,
-            language: 'ro',
-            headers: playbackHeaders(result.referer || getBase() + '/')
-        });
+    // VidHide/EarnVid pot dura ~60s; îl încercăm doar dacă nu avem nicio sursă.
+    if (streams.length === 0 && slowTasks.length) {
+        log('încerc și hosterele lente');
+        var slowResults = await Promise.all(slowTasks.map(function (task) { return task(); }));
+        streams = buildStreams(results.concat(slowResults));
     }
 
     var sourceOrder = String(setting('sourceOrder', 'quality')).toLowerCase();
@@ -1569,7 +1627,7 @@ function diagnosticFallback(tmdbId, mediaType, season, episode, entry, matchCoun
 
     return [{
         name: 'AnimeNexus',
-        title: 'DIAG 1.4.7 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
+        title: 'DIAG 1.4.8 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
             episode + ' c=' + catalogCount + ' m=' + matchCount + ' | ' + label,
         url: 'https://media.w3.org/2010/05/sintel/trailer.mp4',
         quality: 'Auto',
@@ -1714,6 +1772,20 @@ async function getStreams(tmdbId, mediaType, season, episode) {
 
         var wantedEpisode = (!meta.isTv || episode == null) ? 1 : Number(episode);
 
+        // Episod absolut în serial (pentru sezoane Nuvio separate).
+        var targetEpisode = wantedEpisode;
+        if (meta.isTv && meta.season != null && meta.season > 1) {
+            if (meta.seasonFirstEpisode && meta.seasonFirstEpisode > 1) {
+                targetEpisode = wantedEpisode;
+            } else if (meta.seasonCounts) {
+                var previousEpisodes = 0;
+                for (var s = 1; s < meta.season; s++) {
+                    previousEpisodes += Number(meta.seasonCounts[s]) || 0;
+                }
+                if (previousEpisodes > 0) targetEpisode = previousEpisodes + wantedEpisode;
+            }
+        }
+
         var episodeOffset = 0;
 
         for (var i = 0; i < matches.length; i++) {
@@ -1724,8 +1796,22 @@ async function getStreams(tmdbId, mediaType, season, episode) {
 
             var option = matches[i];
             lastEntry = option.label;
-            var localEpisode = wantedEpisode - episodeOffset;
+            // Arc/sezon potrivit pe nume: numerotarea lui locală începe de la 1.
+            // Altfel folosim episodul absolut și offset-ul dintre sezoane.
+            var localEpisode = option._seasonCoreMatch
+                ? wantedEpisode
+                : targetEpisode - episodeOffset;
             if (localEpisode < 1) continue;
+
+            // Dacă episodul depășește numărul acestei intrări, trecem la sezonul următor
+            // înainte de a cere o pagină greșită.
+            var optionEpisodeCount = await countEpisodes(option);
+            if (meta.isTv && optionEpisodeCount > 0 && localEpisode > optionEpisodeCount) {
+                episodeOffset += optionEpisodeCount;
+                log('sar peste ' + option.label + ' (are ' + optionEpisodeCount +
+                    ' ep.), offset=' + episodeOffset);
+                continue;
+            }
 
             log('încerc: ' + option.label + ' (' + option.path + ')' +
                 (episodeOffset ? ' [ep. ' + localEpisode + ']' : ''));
