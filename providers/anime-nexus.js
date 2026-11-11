@@ -12,7 +12,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.5';
+var PROVIDER_VERSION = '1.6.6';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1593,7 +1593,23 @@ async function collectFromPage(html, pageUrl) {
         var task = (function (resolverName, embedUrl, label) {
             return function () {
                 var call;
-                if (resolverName === 'voe') call = rdEnabled() ? resolveVoeRd(embedUrl) : resolveVoe(embedUrl);
+                if (resolverName === 'voe' && rdEnabled()) {
+                    // Oferă și HLS-ul original Voe, și MP4-ul RD: pot avea bitrate diferit.
+                    call = (async function () {
+                        var items = [];
+                        try {
+                            items.push(await resolveVoe(embedUrl));
+                        } catch (hlsError) {
+                            if (debug) log('Voe HLS: ' + hlsError.message);
+                        }
+                        try {
+                            items.push(await resolveVoeRd(embedUrl));
+                        } catch (rdError) {
+                            if (debug) log('Voe RD: ' + rdError.message);
+                        }
+                        return items;
+                    })();
+                } else if (resolverName === 'voe') call = resolveVoe(embedUrl);
                 else if (resolverName === 'dood') call = resolveDood(embedUrl);
                 else if (resolverName === 'mp4upload') call = resolveMp4Upload(embedUrl);
                 else if (resolverName === 'streamtape') call = resolveStreamTape(embedUrl);
@@ -1627,19 +1643,22 @@ async function collectFromPage(html, pageUrl) {
         var out = [];
         var seenUrls = {};
         for (var r = 0; r < results.length; r++) {
-            var result = results[r];
-            if (!result || !result.url || seenUrls[result.url]) continue;
-            seenUrls[result.url] = true;
-            var quality = result.quality || 'Auto';
-            out.push({
-                name: 'AnimeNexus',
-                title: quality + ' • ' + result.label + ' • Subtitrat RO',
-                url: result.url,
-                quality: quality,
-                provider: 'AnimeNexus · ' + result.label,
-                language: 'ro',
-                headers: playbackHeaders(result.referer || getBase() + '/')
-            });
+            var items = Array.isArray(results[r]) ? results[r] : [results[r]];
+            for (var k = 0; k < items.length; k++) {
+                var result = items[k];
+                if (!result || !result.url || seenUrls[result.url]) continue;
+                seenUrls[result.url] = true;
+                var quality = result.quality || 'Auto';
+                out.push({
+                    name: 'AnimeNexus',
+                    title: quality + ' • ' + result.label + ' • Subtitrat RO',
+                    url: result.url,
+                    quality: quality,
+                    provider: 'AnimeNexus · ' + result.label,
+                    language: 'ro',
+                    headers: playbackHeaders(result.referer || getBase() + '/')
+                });
+            }
         }
         return out;
     }
@@ -1701,7 +1720,7 @@ function diagnosticFallback(tmdbId, mediaType, season, episode, entry, matchCoun
 
     return [{
         name: 'AnimeNexus',
-        title: 'DIAG 1.6.5 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
+        title: 'DIAG 1.6.6 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
             episode + ' c=' + catalogCount + ' m=' + matchCount + ' | ' + label,
         url: 'https://media.w3.org/2010/05/sintel/trailer.mp4',
         quality: 'Auto',
