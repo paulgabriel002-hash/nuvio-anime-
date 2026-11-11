@@ -12,12 +12,14 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.4.9';
+var PROVIDER_VERSION = '1.5.0';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
 // ATENȚIE: dacă publici repo-ul, oricine poate folosi acest cont. Este cont secundar.
 var DEFAULT_COOKIE = 'usri=493075; usrs=4930756af23f9cdcca47.75092106';
+var DEFAULT_RD_TOKEN = '';
+var DEFAULT_USE_RD = false;
 
 var runtimeCookie = '';
 var loginAttempted = false;
@@ -1478,12 +1480,77 @@ async function resolveStreamTape(embedUrl) {
     };
 }
 
+function rdToken() {
+    return setting('rdToken', DEFAULT_RD_TOKEN);
+}
+
+function rdEnabled() {
+    return !!setting('useRd', DEFAULT_USE_RD) && !!rdToken();
+}
+
+async function rdUnrestrict(link) {
+    var token = rdToken();
+    if (!token) throw new Error('RD: token lipsă');
+    if (!link) throw new Error('RD: link lipsă');
+
+    var response = await fetch('https://api.real-debrid.com/rest/1.0/unrestrict/link', {
+        method: 'POST',
+        headers: {
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: 'link=' + encodeURIComponent(link)
+    });
+
+    var text = await response.text();
+    if (!response.ok) {
+        throw new Error('RD HTTP ' + response.status + ': ' + text.slice(0, 160));
+    }
+    var data = JSON.parse(text);
+    if (data.error) throw new Error('RD: ' + data.error);
+    if (!data.download) throw new Error('RD: fără link direct');
+    return data;
+}
+
+function megaFileUrl(embedUrl) {
+    return String(embedUrl).replace('/embed/', '/file/');
+}
+
+async function resolveMega(embedUrl) {
+    if (!rdEnabled()) throw new Error('Mega: necesită Real-Debrid');
+    var data = await rdUnrestrict(megaFileUrl(embedUrl));
+    return {
+        url: data.download,
+        quality: parseQuality(data.filename),
+        label: 'Mega (RD)',
+        referer: ''
+    };
+}
+
+async function resolveVoeRd(embedUrl) {
+    if (rdEnabled()) {
+        try {
+            var data = await rdUnrestrict(embedUrl);
+            return {
+                url: data.download,
+                quality: parseQuality(data.filename),
+                label: 'Voe (RD)',
+                referer: ''
+            };
+        } catch (error) {
+            if (debug) log('RD Voe: ' + error.message);
+        }
+    }
+    return resolveVoe(embedUrl);
+}
+
 function resolverFor(url) {
     var host = hostOf(url);
     if (/voe\.sx|susanexpectcare|voe\.to/.test(host)) return 'voe';
     if (/vide0\.net|playmogo|dood|ds2play|doodstream|dooood\.com/.test(host)) return 'dood';
     if (/mp4upload\.com/.test(host)) return 'mp4upload';
     if (/streamtape\.com/.test(host)) return 'streamtape';
+    if (/mega\.nz|mega\.co\.nz/.test(host)) return 'mega';
     if (/morencius\.com|vidhide|earnvids|filelions|vidmoly|vtbe\.to|vtube\./.test(host)) return 'packed';
     return null;
 }
@@ -1521,10 +1588,11 @@ async function collectFromPage(html, pageUrl) {
         var task = (function (resolverName, embedUrl, label) {
             return function () {
                 var call;
-                if (resolverName === 'voe') call = resolveVoe(embedUrl);
+                if (resolverName === 'voe') call = rdEnabled() ? resolveVoeRd(embedUrl) : resolveVoe(embedUrl);
                 else if (resolverName === 'dood') call = resolveDood(embedUrl);
                 else if (resolverName === 'mp4upload') call = resolveMp4Upload(embedUrl);
                 else if (resolverName === 'streamtape') call = resolveStreamTape(embedUrl);
+                else if (resolverName === 'mega') call = resolveMega(embedUrl);
                 else call = resolvePacked(embedUrl, label);
 
                 var startedAt = Date.now();
@@ -1628,7 +1696,7 @@ function diagnosticFallback(tmdbId, mediaType, season, episode, entry, matchCoun
 
     return [{
         name: 'AnimeNexus',
-        title: 'DIAG 1.4.9 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
+        title: 'DIAG 1.5.0 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
             episode + ' c=' + catalogCount + ' m=' + matchCount + ' | ' + label,
         url: 'https://media.w3.org/2010/05/sintel/trailer.mp4',
         quality: 'Auto',
@@ -1919,6 +1987,20 @@ async function onSettings() {
             label: 'Stream de diagnostic',
             defaultValue: false,
             description: 'Dacă nu găsește nicio sursă, afișează un video de test cu ID-ul și sezonul primite. Folosit pentru depanare.'
+        },
+        {
+            type: 'toggle',
+            key: 'useRd',
+            label: 'Real-Debrid',
+            defaultValue: false,
+            description: 'Deblochează Mega și Voe prin contul tău Real-Debrid. Nu îmbunătățește calitatea, poate ajuta la viteză.'
+        },
+        {
+            type: 'text',
+            key: 'rdToken',
+            label: 'Token Real-Debrid',
+            defaultValue: '',
+            description: 'Token privat. Nu îl publica pe GitHub. Folosit doar dacă Real-Debrid este activat.'
         },
         {
             type: 'text',
