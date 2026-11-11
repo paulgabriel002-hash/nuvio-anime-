@@ -12,7 +12,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.5.0';
+var PROVIDER_VERSION = '1.5.1';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -814,8 +814,12 @@ function scoreOption(option, meta) {
     }
 
     if (meta.year) {
-        // Catalogul nu afișează anul; doar titlurile cu anul în denumire ajută.
-        if (String(label).indexOf(String(meta.year)) >= 0) score += 6;
+        // Anul din catalog separă remake-urile (Hunter x Hunter 1999 vs 2011).
+        var labelYear = String(label).match(/\b(19|20)\d{2}\b/);
+        if (labelYear) {
+            if (Number(labelYear[0]) === Number(meta.year)) score += 25;
+            else score -= 60;
+        }
     }
 
     return score;
@@ -1696,7 +1700,7 @@ function diagnosticFallback(tmdbId, mediaType, season, episode, entry, matchCoun
 
     return [{
         name: 'AnimeNexus',
-        title: 'DIAG 1.5.0 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
+        title: 'DIAG 1.5.1 id=' + tmdbId + ' ' + mediaType + ' S' + season + 'E' +
             episode + ' c=' + catalogCount + ' m=' + matchCount + ' | ' + label,
         url: 'https://media.w3.org/2010/05/sintel/trailer.mp4',
         quality: 'Auto',
@@ -1790,7 +1794,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
             }
         }
 
-        // Catalogul și TMDB pot merge în paralel; pe TV economisește ~1s.
+        // Catalogul pornește în paralel cu TMDB.
         var catalogPromise = getCatalog().catch(function (error) {
             log('catalog: ' + error.message);
             return [];
@@ -1801,6 +1805,15 @@ async function getStreams(tmdbId, mediaType, season, episode) {
 
         log('meta: ' + meta.contentId + ' | ' + meta.names.slice(0, 3).join(' / ') +
             ' | isTv=' + meta.isTv + ' | season=' + meta.season);
+
+        // Animeurile din anul curent pot lipsi din snapshot; pentru ele luăm catalogul live.
+        var currentYear = new Date().getFullYear();
+        if (meta.year && meta.year >= currentYear) {
+            catalogPromise = getCatalog(true).catch(function (error) {
+                log('catalog live: ' + error.message);
+                return [];
+            });
+        }
 
         var limit = parseInt(setting('maxSources', '40'), 10) || 40;
         var special = specialEpisodePath(tmdbId, meta, season, episode);
