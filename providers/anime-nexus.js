@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.15';
+var PROVIDER_VERSION = '1.6.16';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1473,7 +1473,7 @@ function parseQuality(value) {
 }
 
 async function inspectMaster(mediaUrl, referer) {
-    if (setting('fastMode', false)) return { quality: null, status: 0 };
+    if (setting('fastMode', true)) return { quality: null, status: 0 };
     if (!/\.m3u8(\?|$)/i.test(mediaUrl)) return { quality: null, status: 0 };
 
     try {
@@ -2165,8 +2165,8 @@ async function onSettings() {
             type: 'toggle',
             key: 'fastMode',
             label: 'Mod rapid',
-            defaultValue: false,
-            description: 'Verifică masterul HLS pentru calitate reală și elimină sursele moarte. Activează doar dacă vrei viteză maximă.'
+            defaultValue: true,
+            description: 'Implicit pornit: sare peste verificarea masterului HLS și întoarce sursele mult mai repede. Dezactivează doar dacă vrei calitate detectată din master.'
         },
         {
             type: 'toggle',
