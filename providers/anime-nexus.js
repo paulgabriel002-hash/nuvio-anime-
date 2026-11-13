@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.10';
+var PROVIDER_VERSION = '1.6.11';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -133,7 +133,15 @@ function pumpRequestQueue() {
 }
 
 function fetchTimed(url, options, timeoutMs) {
-    // NuvioTV nu injectează setTimeout în QuickJS. Nu putem folosi timere.
+    // NuvioTV nu injectează setTimeout în QuickJS. Dacă hostul oferă totuși
+    // AbortSignal.timeout, îl folosim; altfel timeout-ul rămâne doar informativ.
+    options = options || {};
+    if (timeoutMs > 0 && !options.signal &&
+        typeof AbortSignal !== 'undefined' && AbortSignal.timeout) {
+        try {
+            options.signal = AbortSignal.timeout(timeoutMs);
+        } catch (e) { /* host fără AbortSignal.timeout */ }
+    }
     return fetch(url, options);
 }
 
@@ -1605,9 +1613,10 @@ async function resolveRemote(embedUrl, label) {
     var base = String(setting('resolverUrl', '')).trim().replace(/\/+$/, '');
     if (!base) throw new Error('resolver neconfigurat');
     var token = String(setting('resolverToken', '')).trim();
-    var url = base + '/resolve?url=' + encodeURIComponent(embedUrl) +
-        (token ? '&token=' + encodeURIComponent(token) : '');
-    var data = await fetchJson(url, { headers: { 'Accept': 'application/json' } }, 45000);
+    var url = base + '/resolve?url=' + encodeURIComponent(embedUrl);
+    var headers = { 'Accept': 'application/json' };
+    if (token) headers['X-Resolve-Token'] = token;
+    var data = await fetchJson(url, { headers: headers }, 45000);
     if (!data || !data.ok) throw new Error((data && data.error) || 'resolver fără răspuns');
     if (data.proxy_required) throw new Error('Abyss: necesită proxy');
     return {
@@ -1662,6 +1671,7 @@ async function collectFromPage(html, pageUrl) {
     var tasks = [];
     var slowTasks = [];
     var seen = {};
+    var attempts = {};
 
     for (var i = 0; i < iframes.length; i++) {
         var iframe = iframes[i];
@@ -1669,10 +1679,13 @@ async function collectFromPage(html, pageUrl) {
         if (!resolver) continue;
         var host = hostOf(iframe.url);
         var isSlow = resolver === 'dood' || /vidhide|earnvids|vidhidepre|filelions/.test(host);
-        // Un singur host de fiecare tip la fast; la slow/packed încercăm fiecare host.
-        var key = resolver + ((isSlow || resolver === 'packed') ? '|' + host : '');
+        // Dedup pe URL: mirror-urile diferite ale aceluiași host trebuie încercate.
+        // Limită per resolver ca să nu facem prea multe requesturi pe pagini încărcate.
+        if ((attempts[resolver] || 0) >= 4) continue;
+        var key = resolver + '|' + iframe.url;
         if (seen[key]) continue;
         seen[key] = true;
+        attempts[resolver] = (attempts[resolver] || 0) + 1;
 
         var task = (function (resolverName, embedUrl, label) {
             return function () {
