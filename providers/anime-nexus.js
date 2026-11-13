@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.8';
+var PROVIDER_VERSION = '1.6.9';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1601,8 +1601,31 @@ async function resolveVoeRd(embedUrl) {
     return resolveVoe(embedUrl);
 }
 
+async function resolveRemote(embedUrl, label) {
+    var base = String(setting('resolverUrl', '')).trim().replace(/\/+$/, '');
+    if (!base) throw new Error('resolver neconfigurat');
+    var token = String(setting('resolverToken', '')).trim();
+    var url = base + '/resolve?url=' + encodeURIComponent(embedUrl) +
+        (token ? '&token=' + encodeURIComponent(token) : '');
+    var data = await fetchJson(url, { headers: { 'Accept': 'application/json' } }, 45000);
+    if (!data || !data.ok) throw new Error((data && data.error) || 'resolver fără răspuns');
+    if (data.proxy_required) throw new Error('Abyss: necesită proxy');
+    return {
+        url: data.url,
+        quality: data.quality || 'Auto',
+        referer: 'https://' + hostOf(embedUrl) + '/',
+        label: data.label || label || 'Resolver'
+    };
+}
+
 function resolverFor(url) {
     var host = hostOf(url);
+    // FileMoon / StreamHG / Abyss sunt SPA-uri cu challenge; dacă există resolver,
+    // îl folosim (Chromium pe PC/VPS). Abyss întoarce proxy_required și e sărit.
+    if (setting('resolverUrl', '') &&
+        /filemoon|bysedikamoum|streamhg|hgcloud|jodwish|abyss|abyssplayer|hydrax/.test(host)) {
+        return 'remote';
+    }
     if (/voe\.sx|susanexpectcare|voe\.to/.test(host)) return 'voe';
     if (/vide0\.net|playmogo|myvidplay|dood|ds2play|doodstream|dooood\.com/.test(host)) return 'dood';
     if (/mp4upload\.com/.test(host)) return 'mp4upload';
@@ -1671,6 +1694,7 @@ async function collectFromPage(html, pageUrl) {
                 else if (resolverName === 'streamtape') call = resolveStreamTape(embedUrl);
                 else if (resolverName === 'mega') call = resolveMega(embedUrl);
                 else if (resolverName === 'vidara') call = resolveVidara(embedUrl);
+                else if (resolverName === 'remote') call = resolveRemote(embedUrl, label);
                 else call = resolvePacked(embedUrl, label);
 
                 var startedAt = Date.now();
@@ -2123,6 +2147,25 @@ async function onSettings() {
             label: 'Token Real-Debrid',
             defaultValue: '',
             description: 'Token privat. Nu îl publica pe GitHub. Folosit doar dacă Real-Debrid este activat.'
+        },
+        { type: 'header', label: 'Resolver extern (FileMoon / StreamHG)' },
+        {
+            type: 'info',
+            label: 'Rulează resolver/server.py pe PC sau VPS. FileMoon și StreamHG sunt SPA-uri cu challenge și au nevoie de Chromium; Abyss necesită încă proxy.'
+        },
+        {
+            type: 'text',
+            key: 'resolverUrl',
+            label: 'URL resolver',
+            placeholder: 'http://192.168.1.50:8787',
+            description: 'Ex: http://IP-ul-PC-ului:8787. Lasă gol pentru a dezactiva.'
+        },
+        {
+            type: 'text',
+            key: 'resolverToken',
+            label: 'Token resolver',
+            isPassword: true,
+            description: 'Opțional; același RESOLVER_TOKEN setat pe server.'
         },
         {
             type: 'text',
