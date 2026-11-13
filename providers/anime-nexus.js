@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.11';
+var PROVIDER_VERSION = '1.6.12';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1609,34 +1609,10 @@ async function resolveVoeRd(embedUrl) {
     return resolveVoe(embedUrl);
 }
 
-async function resolveRemote(embedUrl, label) {
-    var base = String(setting('resolverUrl', '')).trim().replace(/\/+$/, '');
-    if (!base) throw new Error('resolver neconfigurat');
-    var token = String(setting('resolverToken', '')).trim();
-    var url = base + '/resolve?url=' + encodeURIComponent(embedUrl);
-    var headers = { 'Accept': 'application/json' };
-    if (token) headers['X-Resolve-Token'] = token;
-    var data = await fetchJson(url, { headers: headers }, 45000);
-    if (!data || !data.ok) throw new Error((data && data.error) || 'resolver fără răspuns');
-    if (data.proxy_required) throw new Error('Abyss: necesită proxy');
-    return {
-        url: data.url,
-        quality: data.quality || 'Auto',
-        referer: 'https://' + hostOf(embedUrl) + '/',
-        label: data.label || label || 'Resolver'
-    };
-}
-
 function resolverFor(url) {
     var host = hostOf(url);
-    // FileMoon / StreamHG / Abyss sunt SPA-uri cu challenge; dacă există resolver,
-    // îl folosim (Chromium pe PC/VPS). Abyss întoarce proxy_required și e sărit.
-    if (setting('resolverUrl', '') &&
-        /filemoon|bysedikamoum|streamhg|hgcloud|jodwish|abyss|abyssplayer|hydrax/.test(host)) {
-        return 'remote';
-    }
-    // Fără resolver configurat, aceste SPA-uri/challenge-uri nu pot fi rezolvate
-    // din plugin; le sărim ca să nu pierdem 20s pe fiecare episod.
+    // FileMoon / StreamHG / Abyss sunt SPA-uri cu challenge și ar cere un browser
+    // extern (PC/VPS). Le sărim: pluginul trebuie să meargă și cu PC-ul oprit.
     if (/filemoon|bysedikamoum|streamhg|hgcloud|jodwish|abyss|abyssplayer|hydrax/.test(host)) {
         return null;
     }
@@ -1712,7 +1688,6 @@ async function collectFromPage(html, pageUrl) {
                 else if (resolverName === 'streamtape') call = resolveStreamTape(embedUrl);
                 else if (resolverName === 'mega') call = resolveMega(embedUrl);
                 else if (resolverName === 'vidara') call = resolveVidara(embedUrl);
-                else if (resolverName === 'remote') call = resolveRemote(embedUrl, label);
                 else call = resolvePacked(embedUrl, label);
 
                 var startedAt = Date.now();
@@ -1866,6 +1841,23 @@ function mappedEpisode(tmdbId, meta, mediaType, episode, targetEpisode) {
             }
         }
         if (!hasCurrentYear) return null;
+    }
+
+    // Mapare directă pe sezon TMDB când există exact o intrare pentru acel sezon.
+    // Demon Slayer S5E1 -> hashira-geiko-hen ep. 1, fără offset cumulativ.
+    var localEpisode = Number(episode) || 0;
+    if (meta.season != null && localEpisode >= 1) {
+        var exact = [];
+        for (var s = 0; s < group.series.length; s++) {
+            var candidate = group.series[s];
+            if (Number(candidate.season) === Number(meta.season) &&
+                localEpisode <= (Number(candidate.eps) || 0)) {
+                exact.push(candidate);
+            }
+        }
+        if (exact.length === 1) {
+            return { path: exact[0].path, episode: localEpisode, title: exact[0].title };
+        }
     }
 
     var remaining = Number(targetEpisode) || 1;
@@ -2165,25 +2157,6 @@ async function onSettings() {
             label: 'Token Real-Debrid',
             defaultValue: '',
             description: 'Token privat. Nu îl publica pe GitHub. Folosit doar dacă Real-Debrid este activat.'
-        },
-        { type: 'header', label: 'Resolver extern (FileMoon / StreamHG)' },
-        {
-            type: 'info',
-            label: 'Rulează resolver/server.py pe PC sau VPS. FileMoon și StreamHG sunt SPA-uri cu challenge și au nevoie de Chromium; Abyss necesită încă proxy.'
-        },
-        {
-            type: 'text',
-            key: 'resolverUrl',
-            label: 'URL resolver',
-            placeholder: 'http://192.168.1.50:8787',
-            description: 'Ex: http://IP-ul-PC-ului:8787. Lasă gol pentru a dezactiva.'
-        },
-        {
-            type: 'text',
-            key: 'resolverToken',
-            label: 'Token resolver',
-            isPassword: true,
-            description: 'Opțional; același RESOLVER_TOKEN setat pe server.'
         },
         {
             type: 'text',
