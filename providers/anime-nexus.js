@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.12';
+var PROVIDER_VERSION = '1.6.13';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1654,7 +1654,7 @@ async function collectFromPage(html, pageUrl) {
         var resolver = resolverFor(iframe.url);
         if (!resolver) continue;
         var host = hostOf(iframe.url);
-        var isSlow = resolver === 'dood' || /vidhide|earnvids|vidhidepre|filelions/.test(host);
+        var isSlow = resolver === 'dood' || /vidhide|earnvids|vidhidepre|filelions|minochinos|hexload|hexupload|luluvdo|abstream|uqload/.test(host);
         // Dedup pe URL: mirror-urile diferite ale aceluiași host trebuie încercate.
         // Limită per resolver ca să nu facem prea multe requesturi pe pagini încărcate.
         if ((attempts[resolver] || 0) >= 4) continue;
