@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.17';
+var PROVIDER_VERSION = '1.6.18';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1977,6 +1977,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
         }
 
         // Hartă exactă TMDB → AnimeNexus (fără catalog, fără ghicit după titlu).
+        var mappedGroup = TMDB_MAP[String(tmdbId)];
         var mapped = mappedEpisode(tmdbId, meta, mediaType, episode, targetEpisode);
         if (mapped) {
             log('hartă TMDB: ' + mapped.path + ' ep. ' + mapped.episode);
@@ -2020,6 +2021,14 @@ async function getStreams(tmdbId, mediaType, season, episode) {
                 if (isAuthError(specialError)) throw specialError;
                 log('hartă specială: ' + specialError.message);
             }
+        }
+
+        // Dacă TMDB ID-ul există în hartă, NU intrăm pe fallback-ul euristic.
+        // Fallback-ul rămâne doar pentru titlurile fără nicio intrare TMDB.
+        if (mappedGroup) {
+            log('hartă TMDB incompletă pentru S' + season + 'E' + episode + '; fallback blocat');
+            return diagnosticFallback(tmdbId, mediaType, season, episode,
+                'hartă TMDB fără potrivire pentru episod', 0);
         }
 
         // Fallback euristic pentru titluri neincluse în hartă.
