@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.14';
+var PROVIDER_VERSION = '1.6.15';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1851,6 +1851,13 @@ function mappedEpisode(tmdbId, meta, mediaType, episode, targetEpisode) {
     }
     if (!group.series || !group.series.length) return null;
 
+    // Nu mapam un episod care nu există în sezonul TMDB (ex. Oshi no Ko S1E12).
+    if (meta.isTv && meta.season != null && meta.seasonCounts &&
+        Number(meta.seasonCounts[meta.season]) > 0 &&
+        Number(episode) > Number(meta.seasonCounts[meta.season])) {
+        return null;
+    }
+
     // Sezon nou (anul curent) care nu există încă în hartă: nu forța un sezon vechi,
     // ci lasă fallback-ul să ia catalogul live și să găsească intrarea nouă.
     var currentYear = new Date().getFullYear();
@@ -1947,6 +1954,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
 
         log('meta: ' + meta.contentId + ' | ' + meta.names.slice(0, 3).join(' / ') +
             ' | isTv=' + meta.isTv + ' | season=' + meta.season);
+        if (debug) log('seasons: ' + JSON.stringify(meta.seasonCounts || null));
 
         var limit = parseInt(setting('maxSources', '40'), 10) || 40;
         var wantedEpisode = (!meta.isTv || episode == null) ? 1 : Number(episode);
