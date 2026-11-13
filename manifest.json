@@ -1,6 +1,6 @@
 {
   "name": "AnimeNexus România",
-  "version": "1.6.9",
+  "version": "1.6.10",
   "description": "Surse anime subtitrate în română de pe anime-nexus.io (fost AnimeKage). Hartă TMDB 2887 intrări, Voe HLS + Voe RD, Vidara, nume per host, fallback live pentru sezoane noi.",
   "author": "AnimeNexus Nuvio Provider",
   "scrapers": [
@@ -8,7 +8,7 @@
       "id": "anime-nexus",
       "name": "AnimeNexus",
       "description": "AnimeNexus.io — episoade și filme cu subtitrări în română. Necesită cont.",
-      "version": "1.6.9",
+      "version": "1.6.10",
       "author": "AnimeNexus Nuvio Provider",
       "supportedTypes": [
         "movie",
