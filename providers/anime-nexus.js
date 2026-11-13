@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.16';
+var PROVIDER_VERSION = '1.6.17';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1851,8 +1851,11 @@ function mappedEpisode(tmdbId, meta, mediaType, episode, targetEpisode) {
     }
     if (!group.series || !group.series.length) return null;
 
-    // Nu mapam un episod care nu există în sezonul TMDB (ex. Oshi no Ko S1E12).
-    if (meta.isTv && meta.season != null && meta.seasonCounts &&
+    // Nu mapam un episod care nu exista in sezonul TMDB (ex. Oshi no Ko S1E12).
+    // Sezoanele cu numerotare absoluta (ex. One Piece S4: 92..130) nu se valideaza
+    // dupa numarul de episoade, pentru ca episodul poate fi > episode_count.
+    var firstEpisode = Number(meta.seasonFirstEpisode) || 1;
+    if (meta.isTv && meta.season != null && firstEpisode <= 1 && meta.seasonCounts &&
         Number(meta.seasonCounts[meta.season]) > 0 &&
         Number(episode) > Number(meta.seasonCounts[meta.season])) {
         return null;
