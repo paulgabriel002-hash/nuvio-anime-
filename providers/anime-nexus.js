@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.9';
+var PROVIDER_VERSION = '1.6.10';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1626,13 +1626,18 @@ function resolverFor(url) {
         /filemoon|bysedikamoum|streamhg|hgcloud|jodwish|abyss|abyssplayer|hydrax/.test(host)) {
         return 'remote';
     }
+    // Fără resolver configurat, aceste SPA-uri/challenge-uri nu pot fi rezolvate
+    // din plugin; le sărim ca să nu pierdem 20s pe fiecare episod.
+    if (/filemoon|bysedikamoum|streamhg|hgcloud|jodwish|abyss|abyssplayer|hydrax/.test(host)) {
+        return null;
+    }
     if (/voe\.sx|susanexpectcare|voe\.to/.test(host)) return 'voe';
     if (/vide0\.net|playmogo|myvidplay|dood|ds2play|doodstream|dooood\.com/.test(host)) return 'dood';
     if (/mp4upload\.com/.test(host)) return 'mp4upload';
     if (/streamtape\.com/.test(host)) return 'streamtape';
     if (/vidara\.to/.test(host)) return 'vidara';
     if (/mega\.nz|mega\.co\.nz/.test(host)) return 'mega';
-    if (/morencius\.com|minochinos|vidhide|earnvids|filelions|vidmoly|vtbe\.to|vtube\.|filemoon|bysedikamoum|streamhg|hgcloud|hexupload|hexload|lulustream|luluvdo|abyss|abstream|vidara\.to|uqload\.|hydrax\./.test(host)) return 'packed';
+    if (/morencius\.com|minochinos|vidhide|earnvids|filelions|vidmoly|vtbe\.to|vtube\.|hexupload|hexload|lulustream|luluvdo|abstream|vidara\.to|uqload\./.test(host)) return 'packed';
     return null;
 }
 
