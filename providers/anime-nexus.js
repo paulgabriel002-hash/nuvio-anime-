@@ -13,12 +13,12 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.13';
+var PROVIDER_VERSION = '1.6.14';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
 // ATENȚIE: dacă publici repo-ul, oricine poate folosi acest cont. Este cont secundar.
-var DEFAULT_COOKIE = 'usri=493075; usrs=4930756af23f9cdcca47.75092106';
+var DEFAULT_COOKIE = '';
 var DEFAULT_RD_TOKEN = '';
 var DEFAULT_USE_RD = false;
 
@@ -58,15 +58,22 @@ function setting(key, fallback) {
     return value;
 }
 
+function redactLog(message) {
+    return String(message).replace(/https?:\/\/[^\s"'<>]+/g, function (url) {
+        var cut = url.indexOf('?');
+        return cut >= 0 ? url.slice(0, cut) + '?…' : url;
+    });
+}
+
 function log(message) {
     try {
-        console.log('[AnimeNexus] ' + message);
+        console.log('[AnimeNexus] ' + redactLog(message));
     } catch (e) { /* ignore */ }
 }
 
 function logError(message) {
     try {
-        console.error('[AnimeNexus] ' + message);
+        console.error('[AnimeNexus] ' + redactLog(message));
     } catch (e) { /* ignore */ }
 }
 
@@ -1713,6 +1720,20 @@ async function collectFromPage(html, pageUrl) {
         return [];
     }
 
+    function normalizedStreamKey(url) {
+        var text = String(url || '');
+        var cut = text.indexOf('?');
+        if (cut < 0) return text;
+        var keep = [];
+        var params = text.slice(cut + 1).split('&');
+        var volatile = /^(token|t|s|e|expires|expiry|sig|signature|auth|hash|key|policy|exp)$/i;
+        for (var p = 0; p < params.length; p++) {
+            var name = params[p].split('=')[0];
+            if (!volatile.test(name)) keep.push(params[p]);
+        }
+        return text.slice(0, cut) + (keep.length ? '?' + keep.join('&') : '');
+    }
+
     function buildStreams(results) {
         var out = [];
         var seenUrls = {};
@@ -1720,8 +1741,9 @@ async function collectFromPage(html, pageUrl) {
             var items = Array.isArray(results[r]) ? results[r] : [results[r]];
             for (var k = 0; k < items.length; k++) {
                 var result = items[k];
-                if (!result || !result.url || seenUrls[result.url]) continue;
-                seenUrls[result.url] = true;
+                var dedupKey = normalizedStreamKey(result && result.url);
+                if (!result || !result.url || seenUrls[dedupKey]) continue;
+                seenUrls[dedupKey] = true;
                 var quality = result.quality || 'Auto';
                 out.push({
                     name: result.label + ' AnimeNexus',
@@ -1850,12 +1872,13 @@ function mappedEpisode(tmdbId, meta, mediaType, episode, targetEpisode) {
         var exact = [];
         for (var s = 0; s < group.series.length; s++) {
             var candidate = group.series[s];
-            if (Number(candidate.season) === Number(meta.season) &&
-                localEpisode <= (Number(candidate.eps) || 0)) {
+            if (Number(candidate.season) === Number(meta.season)) {
                 exact.push(candidate);
             }
         }
         if (exact.length === 1) {
+            // Sezon cunoscut: nu permite un episod în afara intervalului.
+            if (localEpisode > (Number(exact[0].eps) || 0)) return null;
             return { path: exact[0].path, episode: localEpisode, title: exact[0].title };
         }
     }
