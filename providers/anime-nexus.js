@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.18';
+var PROVIDER_VERSION = '1.6.19';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1875,10 +1875,21 @@ function mappedEpisode(tmdbId, meta, mediaType, episode, targetEpisode) {
         if (!hasCurrentYear) return null;
     }
 
+    // Dacă TMDB are un singur sezon care înglobează toate intrările AnimeNexus
+    // (ex. My Dress-Up Darling / Bungou / Oshi no Ko), folosim offset cumulativ
+    // între intrări; altfel maparea directă pe sezon ar trunchia la primul cour.
+    var seriesTotal = 0;
+    for (var t = 0; t < group.series.length; t++) {
+        seriesTotal += Number(group.series[t].eps) || 0;
+    }
+    var seasonCount = (meta.seasonCounts && meta.season != null)
+        ? Number(meta.seasonCounts[meta.season]) || 0 : 0;
+    var mergedSeason = seasonCount > 0 && seasonCount === seriesTotal;
+
     // Mapare directă pe sezon TMDB când există exact o intrare pentru acel sezon.
     // Demon Slayer S5E1 -> hashira-geiko-hen ep. 1, fără offset cumulativ.
     var localEpisode = Number(episode) || 0;
-    if (meta.season != null && localEpisode >= 1) {
+    if (!mergedSeason && meta.season != null && localEpisode >= 1) {
         var exact = [];
         for (var s = 0; s < group.series.length; s++) {
             var candidate = group.series[s];
