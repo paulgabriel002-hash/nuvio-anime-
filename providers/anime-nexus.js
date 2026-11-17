@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.32';
+var PROVIDER_VERSION = '1.6.33';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -21,6 +21,8 @@ var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, l
 var DEFAULT_COOKIE = '';
 var DEFAULT_RD_TOKEN = '';
 var DEFAULT_USE_RD = false;
+var DEFAULT_RESOLVER_URL = '';
+var DEFAULT_RESOLVER_TOKEN = '';
 
 var runtimeCookie = '';
 var loginAttempted = false;
@@ -1414,6 +1416,34 @@ async function resolveUqload(embedUrl) {
     };
 }
 
+async function resolveRemote(embedUrl, label) {
+    var base = String(setting('resolverUrl', DEFAULT_RESOLVER_URL)).trim().replace(/\/+$/, '');
+    var token = String(setting('resolverToken', DEFAULT_RESOLVER_TOKEN)).trim();
+    if (!base || !token) throw new Error('resolver extern neconfigurat');
+
+    var endpoint = base + '/resolve?url=' + encodeURIComponent(embedUrl);
+    var data = await fetchJson(endpoint, {
+        headers: {
+            'X-Resolve-Token': token,
+            'Accept': 'application/json'
+        }
+    }, 90000);
+
+    if (!data || !data.ok || !data.url) {
+        throw new Error('resolver: ' + ((data && data.error) || 'răspuns invalid'));
+    }
+    if (data.proxy_required) {
+        throw new Error('resolver: sursa cere proxy');
+    }
+
+    return {
+        url: data.url,
+        quality: data.quality || 'Auto',
+        label: data.label || label,
+        referer: originOf(embedUrl) + '/'
+    };
+}
+
 async function resolvePacked(embedUrl, label) {
     var page = await fetchText(embedUrl, {
         headers: embedHeaders(getBase() + '/'),
@@ -1667,8 +1697,8 @@ function resolverFor(url) {
     var host = hostOf(url);
     // FileMoon / StreamHG / Abyss sunt SPA-uri cu challenge și ar cere un browser
     // extern (PC/VPS). Le sărim: pluginul trebuie să meargă și cu PC-ul oprit.
-    if (/filemoon|bysedikamoum|streamhg|hgcloud|jodwish|abyss|abyssplayer|hydrax/.test(host)) {
-        return null;
+    if (/filemoon|bysedikamoum|streamhg|hgcloud|jodwish|swhoi|hglink|abyss|abyssplayer|hydrax/.test(host)) {
+        return String(setting('resolverUrl', DEFAULT_RESOLVER_URL)).trim() ? 'remote' : null;
     }
     if (/voe\.sx|susanexpectcare|voe\.to/.test(host)) return 'voe';
     if (/vide0\.net|playmogo|myvidplay|dood|ds2play|doodstream|dooood\.com/.test(host)) return 'dood';
@@ -1709,7 +1739,7 @@ async function collectFromPage(html, pageUrl) {
         var resolver = resolverFor(iframe.url);
         if (!resolver) continue;
         var host = hostOf(iframe.url);
-        var isSlow = resolver === 'dood' || /vidhide|earnvids|vidhidepre|filelions|minochinos|hexload|hexupload|luluvdo|abstream/.test(host);
+        var isSlow = resolver === 'remote' || resolver === 'dood' || /vidhide|earnvids|vidhidepre|filelions|minochinos|hexload|hexupload|luluvdo|abstream/.test(host);
         // Dedup pe URL: mirror-urile diferite ale aceluiași host trebuie încercate.
         // Limită per resolver ca să nu facem prea multe requesturi pe pagini încărcate.
         if ((attempts[resolver] || 0) >= 4) continue;
@@ -1744,6 +1774,7 @@ async function collectFromPage(html, pageUrl) {
                 else if (resolverName === 'mega') call = resolveMega(embedUrl);
                 else if (resolverName === 'vidara') call = resolveVidara(embedUrl);
                 else if (resolverName === 'uqload') call = resolveUqload(embedUrl);
+                else if (resolverName === 'remote') call = resolveRemote(embedUrl, label);
                 else call = resolvePacked(embedUrl, label);
 
                 var startedAt = Date.now();
@@ -2267,6 +2298,25 @@ async function onSettings() {
             label: 'Număr maxim de surse',
             placeholder: '40',
             description: 'Implicit 40.'
+        },
+        { type: 'header', label: 'Resolver extern (VPS)' },
+        {
+            type: 'info',
+            label: 'Opțional: un VPS cu Playwright care rezolvă FileMoon, StreamHG și Abyss. Fără el, aceste hosturi sunt sărite. URL-ul trebuie să fie accesibil din TV.'
+        },
+        {
+            type: 'text',
+            key: 'resolverUrl',
+            label: 'Resolver URL',
+            placeholder: 'http://IP:8787',
+            description: 'Exemplu: http://129.159.15.191:8787. Se folosește doar dacă e completat și tokenul.'
+        },
+        {
+            type: 'text',
+            key: 'resolverToken',
+            label: 'Resolver token',
+            isPassword: true,
+            description: 'Tokenul privat al resolverului. Nu îl publica.'
         },
         { type: 'header', label: 'Avansat' },
         { type: 'text', key: 'baseUrl', label: 'Base URL', placeholder: DEFAULT_BASE },
