@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.31';
+var PROVIDER_VERSION = '1.6.32';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1367,6 +1367,53 @@ async function resolveVidara(embedUrl) {
     };
 }
 
+async function resolveUqload(embedUrl) {
+    var page = await fetchText(embedUrl, {
+        headers: embedHeaders(getBase() + '/'),
+        redirect: 'follow'
+    }, 20000);
+
+    var origin = originOf(page.url || embedUrl);
+    var path = String(page.url || embedUrl).split('?')[0].replace(/\/+$/, '');
+    var code = path.split('/').pop();
+    if (!code) throw new Error('UQLOAD: file_code lipsă');
+
+    var body = 'op=embed&file_code=' + encodeURIComponent(code) +
+        '&auto=1&referer=' + encodeURIComponent(getBase() + '/');
+    var dl = await fetchText(origin + '/dl', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Referer': embedUrl,
+            'Origin': origin
+        },
+        body: body,
+        redirect: 'follow'
+    }, 20000);
+
+    var texts = [dl.text];
+    var unpacked = unpackPacker(dl.text);
+    if (unpacked) texts.unshift(unpacked);
+
+    var hls = null;
+    var mp4 = null;
+    for (var t = 0; t < texts.length; t++) {
+        var m3u8 = texts[t].match(/https?:\/\/[^"'\\\s<>]+\.m3u8[^"'\\\s<>]*/i);
+        if (m3u8) { hls = m3u8[0].replace(/\\\//g, '/'); break; }
+        var mp4match = texts[t].match(/https?:\/\/[^"'\\\s<>]+\.mp4[^"'\\\s<>]*/i);
+        if (mp4match) mp4 = mp4match[0].replace(/\\\//g, '/');
+    }
+    var chosen = hls || mp4;
+    if (!chosen) throw new Error('UQLOAD: nu am găsit sursa');
+
+    return {
+        url: chosen,
+        quality: parseQuality(pageTitle(dl.text) || pageTitle(page.text) || chosen),
+        referer: origin + '/',
+        label: 'UQLOAD'
+    };
+}
+
 async function resolvePacked(embedUrl, label) {
     var page = await fetchText(embedUrl, {
         headers: embedHeaders(getBase() + '/'),
@@ -1628,8 +1675,9 @@ function resolverFor(url) {
     if (/mp4upload\.com/.test(host)) return 'mp4upload';
     if (/streamtape\.com/.test(host)) return 'streamtape';
     if (/vidara\.to/.test(host)) return 'vidara';
+    if (/uqload\./.test(host)) return 'uqload';
     if (/mega\.nz|mega\.co\.nz/.test(host)) return 'mega';
-    if (/morencius\.com|minochinos|vidhide|earnvids|filelions|vidmoly|vtbe\.to|vtube\.|hexupload|hexload|lulustream|luluvdo|abstream|vidara\.to|uqload\./.test(host)) return 'packed';
+    if (/morencius\.com|minochinos|vidhide|earnvids|filelions|vidmoly|vtbe\.to|vtube\.|hexupload|hexload|lulustream|luluvdo|abstream|vidara\.to/.test(host)) return 'packed';
     return null;
 }
 
@@ -1661,7 +1709,7 @@ async function collectFromPage(html, pageUrl) {
         var resolver = resolverFor(iframe.url);
         if (!resolver) continue;
         var host = hostOf(iframe.url);
-        var isSlow = resolver === 'dood' || /vidhide|earnvids|vidhidepre|filelions|minochinos|hexload|hexupload|luluvdo|abstream|uqload/.test(host);
+        var isSlow = resolver === 'dood' || /vidhide|earnvids|vidhidepre|filelions|minochinos|hexload|hexupload|luluvdo|abstream/.test(host);
         // Dedup pe URL: mirror-urile diferite ale aceluiași host trebuie încercate.
         // Limită per resolver ca să nu facem prea multe requesturi pe pagini încărcate.
         if ((attempts[resolver] || 0) >= 4) continue;
@@ -1695,6 +1743,7 @@ async function collectFromPage(html, pageUrl) {
                 else if (resolverName === 'streamtape') call = resolveStreamTape(embedUrl);
                 else if (resolverName === 'mega') call = resolveMega(embedUrl);
                 else if (resolverName === 'vidara') call = resolveVidara(embedUrl);
+                else if (resolverName === 'uqload') call = resolveUqload(embedUrl);
                 else call = resolvePacked(embedUrl, label);
 
                 var startedAt = Date.now();
