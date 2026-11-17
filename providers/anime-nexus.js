@@ -13,7 +13,7 @@
  */
 
 var DEFAULT_BASE = 'https://anime-nexus.io';
-var PROVIDER_VERSION = '1.6.33';
+var PROVIDER_VERSION = '1.6.34';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // Cont separat, folosit implicit dacă nu este setat alt cookie în Nuvio.
@@ -1486,6 +1486,10 @@ async function resolvePacked(embedUrl, label) {
     if (!chosen) throw new Error((label || 'Player') + ': nu am găsit sursa');
 
     var quality = parseQuality(pageTitle(page.text));
+    if (quality === 'Auto') {
+        var og = page.text.match(/og:description[^>]*content="([^"]+)"/i);
+        if (og) quality = parseQuality(og[1]);
+    }
     var masterQuality = await inspectMaster(chosen, origin + '/');
     if (debug && (masterQuality.status === 403 || masterQuality.status === 404)) {
         log((label || 'Player') + ': master ' + masterQuality.status + ' (păstrez sursa)');
@@ -1742,7 +1746,7 @@ async function collectFromPage(html, pageUrl) {
         var isSlow = resolver === 'remote' || resolver === 'dood' || /vidhide|earnvids|vidhidepre|filelions|minochinos|hexload|hexupload|luluvdo|abstream/.test(host);
         // Dedup pe URL: mirror-urile diferite ale aceluiași host trebuie încercate.
         // Limită per resolver ca să nu facem prea multe requesturi pe pagini încărcate.
-        if ((attempts[resolver] || 0) >= 4) continue;
+        if ((attempts[resolver] || 0) >= 8) continue;
         var key = resolver + '|' + iframe.url;
         if (seen[key]) continue;
         seen[key] = true;
